@@ -1,6 +1,7 @@
 package datamapper
 
 import (
+	"fmt"
 	"github.com/juju/errors"
 )
 
@@ -32,6 +33,39 @@ func NewUnitOfWork() *UnitOfWork {
 	}
 }
 
+// assertModelNotRegisteredAs returns an error if a model is already registered
+// as having some state of persistence (or lack thereof)
+func (unit *UnitOfWork) assertModelNotRegisteredAs(model Model, registeredAs string) error {
+	var registry map[string]Model
+
+	switch registeredAs {
+	case "dirty":
+		registry = unit.dirtyObjects
+	case "removed":
+		registry = unit.removedObjects
+	case "new":
+		registry = unit.newObjects
+	default:
+		panic(
+			fmt.Sprintf(
+				"unknown registry for state of persistence: \"%s\"",
+				registeredAs,
+			),
+		)
+	}
+
+	_, modelAlreadyRegistered := registry[model.GetID()]
+	if modelAlreadyRegistered {
+		return errors.Errorf(
+			"Registering model failed: model with ID \"%s\" is already registered as %s",
+			model.GetID(),
+			registeredAs,
+		)
+	}
+
+	return nil
+}
+
 // RegisterNew registers a domain model as being new
 func (unit *UnitOfWork) RegisterNew(model Model) error {
 	if model.GetID() == "" {
@@ -41,28 +75,16 @@ func (unit *UnitOfWork) RegisterNew(model Model) error {
 		)
 	}
 
-	_, modelIsDirty := unit.dirtyObjects[model.GetID()]
-	if modelIsDirty {
-		return errors.Errorf(
-			"Registering new model failed: model with ID \"%s\" is already registered as dirty",
-			model.GetID(),
-		)
+	if err := unit.assertModelNotRegisteredAs(model, "dirty"); err != nil {
+		return err
 	}
 
-	_, modelIsRemoved := unit.removedObjects[model.GetID()]
-	if modelIsRemoved {
-		return errors.Errorf(
-			"Registering new model failed: model with ID \"%s\" is already registered as removed",
-			model.GetID(),
-		)
+	if err := unit.assertModelNotRegisteredAs(model, "removed"); err != nil {
+		return err
 	}
 
-	_, modelIsAlreadyNew := unit.newObjects[model.GetID()]
-	if modelIsAlreadyNew {
-		return errors.Errorf(
-			"Registering new model failed: model with ID \"%s\" is already registered as new",
-			model.GetID(),
-		)
+	if err := unit.assertModelNotRegisteredAs(model, "new"); err != nil {
+		return err
 	}
 
 	unit.newObjects[model.GetID()] = model
@@ -79,12 +101,8 @@ func (unit *UnitOfWork) RegisterDirty(model Model) error {
 		)
 	}
 
-	_, modelIsRemoved := unit.removedObjects[model.GetID()]
-	if modelIsRemoved {
-		return errors.Errorf(
-			"Registering dirty model failed: model with ID \"%s\" is already registered as removed",
-			model.GetID(),
-		)
+	if err := unit.assertModelNotRegisteredAs(model, "removed"); err != nil {
+		return err
 	}
 
 	_, modelIsAlreadyDirty := unit.newObjects[model.GetID()]

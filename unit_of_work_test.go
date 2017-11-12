@@ -41,6 +41,20 @@ func TestNewUnitOfWork(t *testing.T) {
 	}
 }
 
+func TestAssertModelNotRegisteredAsPanicsOnUknownState(t *testing.T) {
+	u := NewUnitOfWork()
+
+	m := &ModelStub{id: "5"}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("should panic when unkown persistence state passed")
+		}
+	}()
+
+	_ = u.assertModelNotRegisteredAs(m, "some-state")
+}
+
 func TestRegisterNew(t *testing.T) {
 	m := &ModelStub{id: "5"}
 
