@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-type ModelStub struct {
+type EntityStub struct {
 	id string
 }
 
-func (m *ModelStub) GetID() string {
+func (m *EntityStub) GetID() string {
 	return m.id
 }
 
@@ -36,15 +36,15 @@ func TestNewUnitOfWork(t *testing.T) {
 		t.Errorf("should have zero new objects registered\n%+v", u.dirtyObjects)
 	}
 
-	if len(u.removedObjects) != 0 {
-		t.Errorf("should have zero new objects registered\n%+v", u.removedObjects)
+	if len(u.deletedObjects) != 0 {
+		t.Errorf("should have zero new objects registered\n%+v", u.deletedObjects)
 	}
 }
 
-func TestAssertModelNotRegisteredAsPanicsOnUknownState(t *testing.T) {
+func TestAssertEntityNotRegisteredAsPanicsOnUknownState(t *testing.T) {
 	u := NewUnitOfWork()
 
-	m := &ModelStub{id: "5"}
+	m := &EntityStub{id: "5"}
 
 	defer func() {
 		if r := recover(); r == nil {
@@ -52,48 +52,48 @@ func TestAssertModelNotRegisteredAsPanicsOnUknownState(t *testing.T) {
 		}
 	}()
 
-	_ = u.assertModelNotRegisteredAs(m, "some-state")
+	_ = u.assertEntityNotRegisteredAs(m, "some-state")
 }
 
 func TestRegisterNew(t *testing.T) {
-	m := &ModelStub{id: "5"}
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
 	err := u.RegisterNew(m)
 	failOnUnexpectedErr(err, t)
 
-	foundModel, isRegisteredNew := u.newObjects["5"]
+	foundEntity, isRegisteredNew := u.newObjects["5"]
 
 	if !isRegisteredNew {
 		t.Error("should be registered as new")
 	}
 
-	if foundModel != m {
+	if foundEntity != m {
 		t.Errorf(
-			"registered model should be correct: \nexpected: %+v \nactual: %+v",
+			"registered entity should be correct: \nexpected: %+v \nactual: %+v",
 			m,
-			foundModel,
+			foundEntity,
 		)
 	}
 }
 
 func TestRegisterNewFailsWithNoId(t *testing.T) {
-	m := &ModelStub{}
+	m := &EntityStub{}
 
 	u := NewUnitOfWork()
 
 	err := u.RegisterNew(m)
 
 	if err == nil {
-		t.Error("should return an error if the model has no ID")
+		t.Error("should return an error if the entity has no ID")
 	}
 
-	errShouldContainStr(err, "model has no ID", t)
+	errShouldContainStr(err, "entity has no ID", t)
 }
 
-func TestRegisterNewFailsIfModelDirty(t *testing.T) {
-	m := &ModelStub{id: "5"}
+func TestRegisterNewFailsIfEntityDirty(t *testing.T) {
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
@@ -103,31 +103,31 @@ func TestRegisterNewFailsIfModelDirty(t *testing.T) {
 	err = u.RegisterNew(m)
 
 	if err == nil {
-		t.Error("should return an error if the model is already registered as dirty")
+		t.Error("should return an error if the entity is already registered as dirty")
 	}
 
 	errShouldContainStr(err, "already registered as dirty", t)
 }
 
-func TestRegisterNewFailsIfModelRemoved(t *testing.T) {
-	m := &ModelStub{id: "5"}
+func TestRegisterNewFailsIfEntityDeleted(t *testing.T) {
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
-	err := u.RegisterRemoved(m)
+	err := u.RegisterDeleted(m)
 	failOnUnexpectedErr(err, t)
 
 	err = u.RegisterNew(m)
 
 	if err == nil {
-		t.Error("should return an error if the model is already registered as removed")
+		t.Error("should return an error if the entity is already registered as deleted")
 	}
 
-	errShouldContainStr(err, "already registered as removed", t)
+	errShouldContainStr(err, "already registered as deleted", t)
 }
 
-func TestRegisterNewFailsIfModelAlreadyNew(t *testing.T) {
-	m := &ModelStub{id: "5"}
+func TestRegisterNewFailsIfEntityAlreadyNew(t *testing.T) {
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
@@ -137,67 +137,67 @@ func TestRegisterNewFailsIfModelAlreadyNew(t *testing.T) {
 	err = u.RegisterNew(m)
 
 	if err == nil {
-		t.Error("should return an error if the model is already registered as new")
+		t.Error("should return an error if the entity is already registered as new")
 	}
 
 	errShouldContainStr(err, "already registered as new", t)
 }
 
 func TestRegisterDirty(t *testing.T) {
-	m := &ModelStub{id: "5"}
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
 	err := u.RegisterDirty(m)
 	failOnUnexpectedErr(err, t)
 
-	foundModel, isRegisteredDirty := u.dirtyObjects["5"]
+	foundEntity, isRegisteredDirty := u.dirtyObjects["5"]
 
 	if !isRegisteredDirty {
 		t.Error("should be registered as dirty")
 	}
 
-	if foundModel != m {
+	if foundEntity != m {
 		t.Errorf(
-			"registered model should be correct: \nexpected: %+v \nactual: %+v",
+			"registered entity should be correct: \nexpected: %+v \nactual: %+v",
 			m,
-			foundModel,
+			foundEntity,
 		)
 	}
 }
 
 func TestRegisterDirtyFailsWithNoId(t *testing.T) {
-	m := &ModelStub{}
+	m := &EntityStub{}
 
 	u := NewUnitOfWork()
 
 	err := u.RegisterDirty(m)
 
 	if err == nil {
-		t.Error("should return an error if the model has no ID")
+		t.Error("should return an error if the entity has no ID")
 	}
 
-	errShouldContainStr(err, "model has no ID", t)
+	errShouldContainStr(err, "entity has no ID", t)
 }
 
-func TestRegisterDirtyDoesNothingIfModelNew(t *testing.T) {
-	m := &ModelStub{id: "5"}
+func TestRegisterDirtyDoesNothingIfEntityNew(t *testing.T) {
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
 	err := u.RegisterNew(m)
 	failOnUnexpectedErr(err, t)
 
-	foundModel, isRegisteredNew := u.newObjects[m.GetID()]
+	foundEntity, isRegisteredNew := u.newObjects[m.GetID()]
 	if !isRegisteredNew {
-		t.Error("model should be registered as new")
+		t.Error("entity should be registered as new")
 	}
 
-	if foundModel != m {
+	if foundEntity != m {
 		t.Errorf(
-			"registered model should be correct: \nexpected: %+v \nactual: %+v",
+			"registered entity should be correct: \nexpected: %+v \nactual: %+v",
 			m,
-			foundModel,
+			foundEntity,
 		)
 	}
 
@@ -206,94 +206,94 @@ func TestRegisterDirtyDoesNothingIfModelNew(t *testing.T) {
 
 	_, isRegisteredDirty := u.dirtyObjects[m.GetID()]
 	if isRegisteredDirty {
-		t.Error("model should not be registered as dirty if already registered as new")
+		t.Error("entity should not be registered as dirty if already registered as new")
 	}
 
-	foundModel, isStillRegisteredNew := u.newObjects[m.GetID()]
+	foundEntity, isStillRegisteredNew := u.newObjects[m.GetID()]
 	if !isStillRegisteredNew {
-		t.Error("model should still be registered as new")
+		t.Error("entity should still be registered as new")
 	}
 
-	if foundModel != m {
+	if foundEntity != m {
 		t.Errorf(
-			"registered model should be correct: \nexpected: %+v \nactual: %+v",
+			"registered entity should be correct: \nexpected: %+v \nactual: %+v",
 			m,
-			foundModel,
+			foundEntity,
 		)
 	}
 }
 
-func TestRegisterDirtyFailsIfModelRemoved(t *testing.T) {
-	m := &ModelStub{id: "5"}
+func TestRegisterDirtyFailsIfEntityDeleted(t *testing.T) {
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
-	err := u.RegisterRemoved(m)
+	err := u.RegisterDeleted(m)
 	failOnUnexpectedErr(err, t)
 
 	err = u.RegisterDirty(m)
 
 	if err == nil {
-		t.Error("should return an error if the model is already registered as removed")
+		t.Error("should return an error if the entity is already registered as deleted")
 	}
 
-	errShouldContainStr(err, "already registered as removed", t)
+	errShouldContainStr(err, "already registered as deleted", t)
 }
 
-func TestRegisterRemoved(t *testing.T) {
-	m := &ModelStub{id: "5"}
+func TestRegisterDeleted(t *testing.T) {
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
-	err := u.RegisterRemoved(m)
+	err := u.RegisterDeleted(m)
 	failOnUnexpectedErr(err, t)
 
-	foundModel, isRegisteredRemoved := u.removedObjects["5"]
+	foundEntity, isRegisteredDeleted := u.deletedObjects["5"]
 
-	if !isRegisteredRemoved {
-		t.Error("should be registered as removed")
+	if !isRegisteredDeleted {
+		t.Error("should be registered as deleted")
 	}
 
-	if foundModel != m {
+	if foundEntity != m {
 		t.Errorf(
-			"registered model should be correct: \nexpected: %+v \nactual: %+v",
+			"registered entity should be correct: \nexpected: %+v \nactual: %+v",
 			m,
-			foundModel,
+			foundEntity,
 		)
 	}
 }
 
-func TestRegisterRemovedFailsWithNoId(t *testing.T) {
-	m := &ModelStub{}
+func TestRegisterDeletedFailsWithNoId(t *testing.T) {
+	m := &EntityStub{}
 
 	u := NewUnitOfWork()
 
-	err := u.RegisterRemoved(m)
+	err := u.RegisterDeleted(m)
 
 	if err == nil {
-		t.Error("should return an error if the model has no ID")
+		t.Error("should return an error if the entity has no ID")
 	}
 
-	errShouldContainStr(err, "model has no ID", t)
+	errShouldContainStr(err, "entity has no ID", t)
 }
 
-func TestRegisterRemovedDeletesNewObject(t *testing.T) {
-	m := &ModelStub{id: "5"}
+func TestRegisterDeletedDeletesNewObject(t *testing.T) {
+	m := &EntityStub{id: "5"}
 
 	u := NewUnitOfWork()
 
 	err := u.RegisterNew(m)
 	failOnUnexpectedErr(err, t)
 
-	err = u.RegisterRemoved(m)
+	err = u.RegisterDeleted(m)
 
 	_, isStillRegisteredNew := u.newObjects["5"]
 	if isStillRegisteredNew {
-		t.Error("should delete registration for a new object when registering that new object as removed")
+		t.Error("should delete registration for a new object when registering that new object as deleted")
 	}
 
-	_, isRegisteredRemoved := u.removedObjects["5"]
-	if isRegisteredRemoved {
+	_, isRegisteredDeleted := u.deletedObjects["5"]
+	if isRegisteredDeleted {
 		t.Error("should not register an object that was previously new as slated for removal - new object has not been persisted so nothing to delete")
 	}
 }

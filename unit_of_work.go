@@ -5,9 +5,9 @@ import (
 	"github.com/juju/errors"
 )
 
-// Model defines a domain model
-type Model interface {
-	// Return a model's ID
+// Entity defines a domain entity
+type Entity interface {
+	// Return an entity's ID
 	GetID() string
 }
 
@@ -15,34 +15,46 @@ type Model interface {
 // given business transaction
 type UnitOfWork struct {
 	// A map of objects to be inserted into the datastore
-	newObjects map[string]Model
+	newObjects map[string]Entity
 
 	// A map of objects to be updated in the datastore
-	dirtyObjects map[string]Model
+	dirtyObjects map[string]Entity
 
 	// A map of objects to be deleted from the datastore
-	removedObjects map[string]Model
+	deletedObjects map[string]Entity
 }
 
 // NewUnitOfWork creates a new instance of UnitOfWork
 func NewUnitOfWork() *UnitOfWork {
 	return &UnitOfWork{
-		newObjects:     make(map[string]Model),
-		dirtyObjects:   make(map[string]Model),
-		removedObjects: make(map[string]Model),
+		newObjects:     make(map[string]Entity),
+		dirtyObjects:   make(map[string]Entity),
+		deletedObjects: make(map[string]Entity),
 	}
 }
 
-// assertModelNotRegisteredAs returns an error if a model is already registered
+// assertEntityHasAnID returns an error if an entity has no ID
+func (unit *UnitOfWork) assertEntityHasID(entity Entity) error {
+	if entity.GetID() == "" {
+		return errors.Errorf(
+			"Registering entity failed: entity has no ID: %+v",
+			entity,
+		)
+	}
+
+	return nil
+}
+
+// assertEntityNotRegisteredAs returns an error if an entity is already registered
 // as having some state of persistence (or lack thereof)
-func (unit *UnitOfWork) assertModelNotRegisteredAs(model Model, registeredAs string) error {
-	var registry map[string]Model
+func (unit *UnitOfWork) assertEntityNotRegisteredAs(entity Entity, registeredAs string) error {
+	var registry map[string]Entity
 
 	switch registeredAs {
 	case "dirty":
 		registry = unit.dirtyObjects
-	case "removed":
-		registry = unit.removedObjects
+	case "deleted":
+		registry = unit.deletedObjects
 	case "new":
 		registry = unit.newObjects
 	default:
@@ -54,11 +66,11 @@ func (unit *UnitOfWork) assertModelNotRegisteredAs(model Model, registeredAs str
 		)
 	}
 
-	_, modelAlreadyRegistered := registry[model.GetID()]
-	if modelAlreadyRegistered {
+	_, entityAlreadyRegistered := registry[entity.GetID()]
+	if entityAlreadyRegistered {
 		return errors.Errorf(
-			"Registering model failed: model with ID \"%s\" is already registered as %s",
-			model.GetID(),
+			"Registering entity failed: entity with ID \"%s\" is already registered as %s",
+			entity.GetID(),
 			registeredAs,
 		)
 	}
@@ -66,77 +78,75 @@ func (unit *UnitOfWork) assertModelNotRegisteredAs(model Model, registeredAs str
 	return nil
 }
 
-// RegisterNew registers a domain model as being new
-func (unit *UnitOfWork) RegisterNew(model Model) error {
-	if model.GetID() == "" {
-		return errors.Errorf(
-			"Registering new model failed: model has no ID: %+v",
-			model,
-		)
-	}
-
-	if err := unit.assertModelNotRegisteredAs(model, "dirty"); err != nil {
+// RegisterNew registers a domain entity as being new
+func (unit *UnitOfWork) RegisterNew(entity Entity) error {
+	// Entity must have an ID
+	if err := unit.assertEntityHasID(entity); err != nil {
 		return err
 	}
 
-	if err := unit.assertModelNotRegisteredAs(model, "removed"); err != nil {
+	// New entity must not be dirty
+	if err := unit.assertEntityNotRegisteredAs(entity, "dirty"); err != nil {
 		return err
 	}
 
-	if err := unit.assertModelNotRegisteredAs(model, "new"); err != nil {
+	// New entity must not be slated for deletion
+	if err := unit.assertEntityNotRegisteredAs(entity, "deleted"); err != nil {
 		return err
 	}
 
-	unit.newObjects[model.GetID()] = model
+	// New entity must not already be registered as new
+	if err := unit.assertEntityNotRegisteredAs(entity, "new"); err != nil {
+		return err
+	}
+
+	unit.newObjects[entity.GetID()] = entity
 
 	return nil
 }
 
-// RegisterDirty registers a domain model as being dirty
-func (unit *UnitOfWork) RegisterDirty(model Model) error {
-	if model.GetID() == "" {
-		return errors.Errorf(
-			"Registering new model failed: model has no ID: %+v",
-			model,
-		)
-	}
-
-	if err := unit.assertModelNotRegisteredAs(model, "removed"); err != nil {
+// RegisterDirty registers a domain entity as being dirty
+func (unit *UnitOfWork) RegisterDirty(entity Entity) error {
+	// Entity must have an ID
+	if err := unit.assertEntityHasID(entity); err != nil {
 		return err
 	}
 
-	_, modelIsAlreadyDirty := unit.newObjects[model.GetID()]
-	if !modelIsAlreadyDirty {
-		unit.dirtyObjects[model.GetID()] = model
+	// Dirty entity must not be slated for deletion
+	if err := unit.assertEntityNotRegisteredAs(entity, "deleted"); err != nil {
+		return err
+	}
+
+	_, entityIsAlreadyDirty := unit.newObjects[entity.GetID()]
+	if !entityIsAlreadyDirty {
+		unit.dirtyObjects[entity.GetID()] = entity
 	}
 
 	return nil
 }
 
-// RegisterRemoved registers a domain model as being removed
-func (unit *UnitOfWork) RegisterRemoved(model Model) error {
-	if model.GetID() == "" {
-		return errors.Errorf(
-			"Registering removed model failed: model has no ID: %+v",
-			model,
-		)
+// RegisterDeleted registers a domain entity as being deleted
+func (unit *UnitOfWork) RegisterDeleted(entity Entity) error {
+	// Entity must have an ID
+	if err := unit.assertEntityHasID(entity); err != nil {
+		return err
 	}
 
 	// No need to mark something for deletion if it is still new and hasn't
 	// been persisted
-	_, modelIsAlreadyNew := unit.newObjects[model.GetID()]
-	if modelIsAlreadyNew {
-		delete(unit.newObjects, model.GetID())
+	_, entityIsAlreadyNew := unit.newObjects[entity.GetID()]
+	if entityIsAlreadyNew {
+		delete(unit.newObjects, entity.GetID())
 
 		return nil
 	}
 
-	// Remove a model from the dirty set if it is to be deleted
-	delete(unit.dirtyObjects, model.GetID())
+	// Remove an entity from the dirty set if it is to be deleted
+	delete(unit.dirtyObjects, entity.GetID())
 
-	_, modelIsAlreadyRemoved := unit.removedObjects[model.GetID()]
-	if !modelIsAlreadyRemoved {
-		unit.removedObjects[model.GetID()] = model
+	_, entityIsAlreadyDeleted := unit.deletedObjects[entity.GetID()]
+	if !entityIsAlreadyDeleted {
+		unit.deletedObjects[entity.GetID()] = entity
 	}
 
 	return nil
